@@ -15,28 +15,30 @@ function clearAuthData() {
   localStorage.removeItem('user')
 }
 
-// 防止并发 401 触发多次页面刷新
 let isRedirecting = false
 function redirectToLogin() {
   if (isRedirecting) return
   isRedirecting = true
   clearAuthData()
-  window.location.href = '/login'
+  window.location.replace('/login')
 }
 
-// H8: 客户端token过期检查
-function isTokenExpired(token) {
+function base64UrlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/')
+  while (str.length % 4) str += '='
+  return atob(str)
+}
+
+export function isTokenExpired(token) {
   if (!token) return true
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    // 检查 exp 字段是否存在且为有效数字
+    const payload = JSON.parse(base64UrlDecode(token.split('.')[1]))
     if (!payload.exp || typeof payload.exp !== 'number') {
       console.warn('[Auth] Token 缺少有效的 exp 字段，视为无效')
       return true
     }
     return payload.exp * 1000 < Date.now()
   } catch (err) {
-    // 区分解析失败和真正过期：解析失败的 token 不可用但不应静默清除
     console.warn('[Auth] Token 格式异常，无法解析:', err.message)
     return true
   }
@@ -60,14 +62,13 @@ api.interceptors.response.use(
   response => response.data,
   error => {
     if (error.response?.status === 401) {
-      // 如果请求发起后 token 已更新（新登录发生），忽略此 401
-      // 避免旧请求的 401 清除新登录的 token 导致页面闪跳
       const currentToken = getToken()
       const requestToken = (error.config?.headers?.Authorization || '').replace('Bearer ', '')
       if (currentToken && requestToken && currentToken !== requestToken) {
         return Promise.reject(error.response?.data || error)
       }
       redirectToLogin()
+      return Promise.reject(error.response?.data || error)
     }
     return Promise.reject(error.response?.data || error)
   }

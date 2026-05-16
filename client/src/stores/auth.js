@@ -31,17 +31,16 @@ export const useAuthStore = defineStore('auth', () => {
     const versionAtStart = sessionVersion
     try {
       const res = await getCurrentUser()
-      // 如果 login 在请求期间发生，忽略旧结果
       if (sessionVersion !== versionAtStart) return
       if (res.code === 0) {
         user.value = res.data
         localStorage.setItem('user', JSON.stringify(res.data))
       }
-    } catch {
-      // 只有版本号没变时才清理 auth（防止清除刚登录的 token）
+    } catch (err) {
       if (sessionVersion === versionAtStart) {
         clearAuth()
       }
+      throw err
     }
   }
 

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { isTokenExpired } from '@/api/index'
 
 // 权限映射（与 shared/permissions.json 保持同步）
 // 修改权限时需同时更新 server/middleware/auth.js 和 shared/permissions.json
@@ -40,12 +41,19 @@ const PERMISSIONS = {
   viewer: ['export', 'query']
 }
 
-// 路由守卫
 router.beforeEach((to, from, next) => {
   if (to.meta.public) return next()
 
   const authStore = useAuthStore()
   if (!authStore.isLoggedIn) {
+    return next('/login')
+  }
+
+  // 进入受保护页面前先做客户端 token 过期校验，
+  // 避免带着过期 token 先渲染再闪跳到登录页
+  const storedToken = localStorage.getItem('token')
+  if (storedToken && isTokenExpired(storedToken)) {
+    authStore.clearAuth()
     return next('/login')
   }
 
