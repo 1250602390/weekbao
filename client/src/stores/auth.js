@@ -6,6 +6,9 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
   const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
 
+  // 会话版本号：login 时递增，fetchUser 用旧版本号调用 clearAuth 时忽略
+  let sessionVersion = token.value ? 0 : -1
+
   const isLoggedIn = computed(() => !!token.value)
   const userRole = computed(() => user.value?.role || '')
   const displayName = computed(() => user.value?.display_name || '')
@@ -15,6 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(username, password) {
     const res = await loginApi({ username, password })
     if (res.code === 0) {
+      sessionVersion++  // 递增版本号，使旧的 fetchUser 失效
       token.value = res.data.token
       user.value = res.data.user
       localStorage.setItem('token', res.data.token)
@@ -24,14 +28,20 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchUser() {
+    const versionAtStart = sessionVersion
     try {
       const res = await getCurrentUser()
+      // 如果 login 在请求期间发生，忽略旧结果
+      if (sessionVersion !== versionAtStart) return
       if (res.code === 0) {
         user.value = res.data
         localStorage.setItem('user', JSON.stringify(res.data))
       }
     } catch {
-      clearAuth()
+      // 只有版本号没变时才清理 auth（防止清除刚登录的 token）
+      if (sessionVersion === versionAtStart) {
+        clearAuth()
+      }
     }
   }
 

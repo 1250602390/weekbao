@@ -60,6 +60,13 @@ api.interceptors.response.use(
   response => response.data,
   error => {
     if (error.response?.status === 401) {
+      // 如果请求发起后 token 已更新（新登录发生），忽略此 401
+      // 避免旧请求的 401 清除新登录的 token 导致页面闪跳
+      const currentToken = getToken()
+      const requestToken = (error.config?.headers?.Authorization || '').replace('Bearer ', '')
+      if (currentToken && requestToken && currentToken !== requestToken) {
+        return Promise.reject(error.response?.data || error)
+      }
       redirectToLogin()
     }
     return Promise.reject(error.response?.data || error)

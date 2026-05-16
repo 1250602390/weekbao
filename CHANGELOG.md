@@ -24,6 +24,12 @@
   DashboardView 中有 3 个并行 API 调用，全部返回 401 时会多次触发 `window.location.href`。
   修复：新增 `isRedirecting` 标志位，确保只执行一次重定向。
 
+- **修复登录成功后首页闪跳回登录页的问题**
+- 根本原因：`App.vue` onMounted 调用的 `fetchUser()` 使用旧 token 发出请求，用户登录后新 token 写入 localStorage，但旧请求的 401 响应先被 Axios 响应拦截器捕获，直接调用 `redirectToLogin()` 清除了新 token。
+- 修复方案（两层防护）：
+- 1. `stores/auth.js` 新增 `sessionVersion` 计数器：`login()` 递增版本号，`fetchUser()` 仅在版本号未变时才执行 `clearAuth()`，防止旧异步操作清除新登录状态。
+- 2. `api/index.js` 响应拦截器增加 token 变更检测：401 时对比当前 localStorage token 与请求携带的 token，若不同（说明有新登录发生），忽略该 401 不触发重定向。
+
 - **修复 `isTokenExpired` 的 catch 块过于激进**
   token 格式异常时也视为"过期"，会导致用户被无条件踢出。
   修复：增加 `console.warn` 日志区分解析失败场景，增加 `exp` 字段有效性检查。
