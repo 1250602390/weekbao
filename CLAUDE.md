@@ -33,7 +33,9 @@ Monorepo with two sub-projects: `client/` (Vue 3 frontend) and `server/` (Expres
 
 ### Storage: JSON File (Not a Database)
 
-Current storage is a single JSON file at `data/db.json`, implemented in `server/config/jsonStore.js`. It provides generic CRUD with filtering, sorting, pagination, and auto-increment IDs. The original plan was Sequelize + SQLite/PostgreSQL — `server/config/database.js` is a remnant kept for future PostgreSQL migration. To migrate, only the model layer needs replacement.
+Current storage is a single JSON file at `data/db.json`, implemented in `server/config/jsonStore.js`. It provides generic CRUD with filtering, sorting, pagination, and auto-increment IDs. **CRUD write operations (create/update/remove) persist immediately** to disk (no debounce), while other writes use a microtask debounce. Atomic writes use temp-file + rename pattern. The original plan was Sequelize + SQLite/PostgreSQL — `server/config/database.js` is a remnant kept for future PostgreSQL migration. To migrate, only the model layer needs replacement.
+
+**Rate limiting** (`server/services/authService.js`) persists to `data/ratelimit.json` (file-based), supporting multi-process deployments. Expired entries are auto-cleaned on each check.
 
 ### Report Generation Engine
 
@@ -45,7 +47,13 @@ Current storage is a single JSON file at `data/db.json`, implemented in `server/
 
 ### Frontend Data Flow
 
-`src/api/` (Axios wrappers) → `src/stores/` (Pinia) → `src/views/` (pages). The Axios instance in `src/api/index.js` auto-attaches JWT from auth store and redirects to `/login` on 401.
+`src/api/` (Axios wrappers) → `src/stores/` (Pinia) → `src/views/` (pages).
+
+**Auth & API (`src/api/index.js`)**: The Axios instance reads JWT directly from `localStorage` (NOT from Pinia store) to avoid a circular dependency between `api/index.js` ↔ `stores/auth.js`. On 401 responses or expired tokens, it clears localStorage and redirects to `/login` via `window.location.href`. A `isRedirecting` flag prevents duplicate redirects from concurrent 401 responses.
+
+**App startup (`src/App.vue`)**: On mount, if a token exists in localStorage, it calls `GET /api/auth/me` to validate the token. If invalid, clears auth and redirects to `/login` to avoid a flash of the Dashboard.
+
+**Draft save (`src/utils/draft.js`)**: Uses `fetch` + `keepalive: true` in `beforeunload` handler to reliably send draft data even when the page closes. Regular auto-save uses `setInterval` (30s).
 
 ### Weekly Period Calculation
 
@@ -75,7 +83,10 @@ Weeks run **Thursday 00:00 to Wednesday 23:59**. This logic is duplicated in `se
 
 ## Important Notes
 
+- **Token flow**: Login → token saved to localStorage by AuthStore → `api/index.js` reads token from localStorage (NOT Pinia) → attaches `Bearer` header → server verifies. This breaks the original circular dependency.
+- **JWT dev secret**: Fixed string `weekly-report-dev-secret-key-fixed` (not dependent on `process.pid`), so tokens survive server restarts in dev.
+- **RBAC permissions**: Single source of truth at `shared/permissions.json`. Both `client/src/router/index.js` and `server/middleware/auth.js` contain a local copy with sync comments.
 - `server/config/database.js` exists but is **unused** — the active storage is `server/config/jsonStore.js`
-- `data/db.json` is the live database; it is gitignored via `data/*.sqlite` pattern but the actual gitignore should include `data/db.json`
+- `data/db.json` is the live database; ensure gitignore covers it to avoid committing sensitive data
 - Operation logging uses `res.on('finish')` in the middleware, which runs after auth middleware sets `req.user`
 - The report generation engine writes HTML content (not Markdown) into `summary_content` and `detail_content` fields

@@ -146,7 +146,7 @@ import { useReportStore } from '@/stores/report'
 import { getReportById, saveModuleData, saveDraft as saveDraftApi, getDrafts, submitReport } from '@/api/report'
 import { getTemplateList } from '@/api/template'
 import { getDeadline, getWeekPeriod } from '@/utils/weekCalc'
-import { startDraftAutoSave, stopDraftAutoSave, saveBeforeUnload } from '@/utils/draft'
+import { startDraftAutoSave, stopDraftAutoSave, sendBeaconSave } from '@/utils/draft'
 import CountdownTimer from '@/components/CountdownTimer.vue'
 
 const router = useRouter()
@@ -158,6 +158,7 @@ const templates = ref([])
 const formData = reactive({})
 const lastWeekData = ref({})
 const activeModule = ref('road')
+let cleanupBeforeUnload = null
 
 const deadline = computed(() => {
   if (!report.value) return new Date()
@@ -306,11 +307,26 @@ onMounted(async () => {
   // 启动草稿自动保存
   startDraftAutoSave(() => handleSaveDraft(true), 30000)
 
-  // C8: 页面关闭前保存草稿
-  cleanupBeforeUnload = saveBeforeUnload(() => handleSaveDraft(true))
+  // C8: 页面关闭前通过 sendBeacon 保存草稿
+  const token = localStorage.getItem('token') || ''
+  const beforeUnloadHandler = () => {
+    if (!report.value) return
+    for (const mod of modules) {
+      const data = { ...formData[mod.key] }
+      Object.keys(data).forEach(k => { if (data[k] === '' || data[k] === null) delete data[k] })
+      if (Object.keys(data).length > 0) {
+        sendBeaconSave(
+          `/api/reports/${report.value.id}/drafts/${mod.key}`,
+          { data },
+          token
+        )
+      }
+    }
+  }
+  window.addEventListener('beforeunload', beforeUnloadHandler)
+  cleanupBeforeUnload = () => window.removeEventListener('beforeunload', beforeUnloadHandler)
 })
 
-let cleanupBeforeUnload = null
 onUnmounted(() => {
   stopDraftAutoSave()
   if (cleanupBeforeUnload) cleanupBeforeUnload()

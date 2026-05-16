@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+// 权限映射（与 shared/permissions.json 保持同步）
+// 修改权限时需同时更新 server/middleware/auth.js 和 shared/permissions.json
+
 const routes = [
   {
     path: '/login',
@@ -29,6 +32,14 @@ const router = createRouter({
   routes
 })
 
+// 权限映射（与 shared/permissions.json 保持同步）
+// 修改权限时需同时更新 server/middleware/auth.js 和 shared/permissions.json
+const PERMISSIONS = {
+  admin: ['fill', 'generate', 'export', 'query', 'manage_user', 'view_log', 'config'],
+  manager: ['fill', 'generate', 'export', 'query'],
+  viewer: ['export', 'query']
+}
+
 // 路由守卫
 router.beforeEach((to, from, next) => {
   if (to.meta.public) return next()
@@ -40,11 +51,6 @@ router.beforeEach((to, from, next) => {
 
   // 权限检查
   if (to.meta.perm) {
-    const PERMISSIONS = {
-      admin: ['fill', 'generate', 'export', 'query', 'manage_user', 'view_log', 'config'],
-      manager: ['fill', 'generate', 'export', 'query'],
-      viewer: ['export', 'query']
-    }
     const userPerms = PERMISSIONS[authStore.userRole] || []
     if (!userPerms.includes(to.meta.perm)) {
       return next('/')

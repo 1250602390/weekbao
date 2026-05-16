@@ -1,25 +1,63 @@
 const jwt = require('jsonwebtoken')
+const fs = require('fs')
+const path = require('path')
 const config = require('../config')
 const { User } = require('../models')
 const { success, fail } = require('../utils/response')
 
-// H6: 简易登录频率限制（内存存储，5次/分钟）
-const loginAttempts = new Map()
+// H6: 登录频率限制（文件持久化存储，多进程共享）
+const RATE_LIMIT_FILE = path.join(__dirname, '../../data/ratelimit.json')
 const RATE_LIMIT_WINDOW = 60 * 1000
 const MAX_ATTEMPTS = 5
 
+function loadRateLimits() {
+  try {
+    if (fs.existsSync(RATE_LIMIT_FILE)) {
+      return JSON.parse(fs.readFileSync(RATE_LIMIT_FILE, 'utf-8'))
+    }
+  } catch {}
+  return {}
+}
+
+function saveRateLimits(limits) {
+  try {
+    const dir = path.dirname(RATE_LIMIT_FILE)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    const tmpFile = RATE_LIMIT_FILE + '.tmp'
+    fs.writeFileSync(tmpFile, JSON.stringify(limits, null, 2), 'utf-8')
+    fs.renameSync(tmpFile, RATE_LIMIT_FILE)
+  } catch (err) {
+    console.error('[RateLimit] 保存限流数据失败:', err.message)
+  }
+}
+
 function checkRateLimit(username, ip) {
+  const limits = loadRateLimits()
   const key = `${username}:${ip}`
   const now = Date.now()
-  const record = loginAttempts.get(key)
+  const record = limits[key]
+
+  // 清理过期记录
+  let cleaned = false
+  Object.keys(limits).forEach(k => {
+    if (now - limits[k].firstAttempt > RATE_LIMIT_WINDOW) {
+      delete limits[k]
+      cleaned = true
+    }
+  })
+
   if (!record || now - record.firstAttempt > RATE_LIMIT_WINDOW) {
-    loginAttempts.set(key, { count: 1, firstAttempt: now })
+    limits[key] = { count: 1, firstAttempt: now }
+    saveRateLimits(limits)
     return true
   }
   if (record.count >= MAX_ATTEMPTS) {
+    if (cleaned) saveRateLimits(limits)
     return false
   }
   record.count++
+  limits[key] = record
+  saveRateLimits(limits)
   return true
 }
 

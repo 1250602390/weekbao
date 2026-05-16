@@ -131,40 +131,37 @@ function viewLatestReport() {
 }
 
 onMounted(async () => {
-  // 获取当前周报
-  try {
-    const res = await reportStore.fetchCurrentReport()
-    if (res.code === 0) {
-      const report = res.data
-      if (report.status === 'draft' || report.status === 'submitted') {
-        pendingReport.value = report
-      }
-      // 合并上周数据
-      if (report.last_week_data) {
-        report.last_week_data.forEach(lwd => {
-          const mod = report.moduleData.find(m => m.module === lwd.module)
-          if (mod) {
-            Object.keys(lwd.data).forEach(key => { mod.data[`_last_${key}`] = lwd.data[key] })
-          }
-        })
-      }
-    }
-  } catch {}
+  // 并行获取数据，减少页面加载时间
+  const [currentRes, publishedRes, recentRes] = await Promise.allSettled([
+    reportStore.fetchCurrentReport(),
+    getReportList({ page: 1, page_size: 1, status: 'published' }),
+    getReportList({ page: 1, page_size: 8 })
+  ])
 
-  // 获取最新已发布周报
-  try {
-    const res = await getReportList({ page: 1, page_size: 1, status: 'published' })
-    if (res.code === 0 && res.data.list.length > 0) {
-      latestPublished.value = res.data.list[0]
+  // 处理当前周报
+  if (currentRes.status === 'fulfilled' && currentRes.value?.code === 0) {
+    const report = currentRes.value.data
+    if (report.status === 'draft' || report.status === 'submitted') {
+      pendingReport.value = report
     }
-  } catch {}
+    if (report.last_week_data) {
+      report.last_week_data.forEach(lwd => {
+        const mod = report.moduleData?.find(m => m.module === lwd.module)
+        if (mod) {
+          Object.keys(lwd.data).forEach(key => { mod.data[`_last_${key}`] = lwd.data[key] })
+        }
+      })
+    }
+  }
 
-  // 获取近期周报用于趋势图
-  try {
-    const res = await getReportList({ page: 1, page_size: 8 })
-    if (res.code === 0) {
-      recentReports.value = res.data.list.reverse()
-    }
-  } catch {}
+  // 处理最新已发布周报
+  if (publishedRes.status === 'fulfilled' && publishedRes.value?.code === 0 && publishedRes.value.data.list.length > 0) {
+    latestPublished.value = publishedRes.value.data.list[0]
+  }
+
+  // 处理近期周报趋势数据
+  if (recentRes.status === 'fulfilled' && recentRes.value?.code === 0) {
+    recentReports.value = recentRes.value.data.list.reverse()
+  }
 })
 </script>

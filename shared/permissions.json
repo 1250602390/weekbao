@@ -1,0 +1,5 @@
+{
+  "admin": ["fill", "generate", "export", "query", "manage_user", "view_log", "config"],
+  "manager": ["fill", "generate", "export", "query"],
+  "viewer": ["export", "query"]
+}

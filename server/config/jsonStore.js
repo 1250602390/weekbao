@@ -53,18 +53,37 @@ function loadData() {
 }
 
 // C7: 原子写入 — 先写临时文件再重命名，避免断电导致文件损坏
+// 使用微任务延迟合并写入，同时关键操作（create/update/remove）跳过 debounce 确保不丢数据
 let saveTimer = null
-function saveData() {
+let savePending = false
+
+function saveData(immediate = false) {
+  if (immediate) {
+    // 关键操作立即写入，不等待 debounce
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    doSave()
+    return
+  }
+  savePending = true
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    try {
-      const tmpFile = DB_FILE + '.tmp'
-      fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8')
-      fs.renameSync(tmpFile, DB_FILE)
-    } catch (err) {
-      console.error('[JsonStore] Save data error:', err.message)
-    }
-  }, 100)
+    saveTimer = null
+    savePending = false
+    doSave()
+  }, 0)
+}
+
+function doSave() {
+  try {
+    const tmpFile = DB_FILE + '.tmp'
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8')
+    fs.renameSync(tmpFile, DB_FILE)
+  } catch (err) {
+    console.error('[JsonStore] Save data error:', err.message)
+  }
 }
 
 // 优雅关机：进程退出前将内存数据刷入磁盘
@@ -156,7 +175,7 @@ function create(table, record) {
   }
   if (!d[table]) d[table] = []
   d[table].push(newRecord)
-  saveData()
+  saveData(true)  // 创建操作立即持久化
   return newRecord
 }
 
@@ -169,7 +188,7 @@ function update(table, id, updates) {
     ...updates,
     updated_at: new Date().toISOString()
   }
-  saveData()
+  saveData(true)  // 更新操作立即持久化
   return d[table][idx]
 }
 
@@ -178,7 +197,7 @@ function remove(table, where) {
   d[table] = (d[table] || []).filter(row => {
     return !Object.keys(where).every(key => row[key] === where[key])
   })
-  saveData()
+  saveData(true)  // 删除操作立即持久化
 }
 
 function removeById(table, id) {

@@ -1,7 +1,6 @@
 const express = require('express')
 const cors = require('cors')
 const config = require('./config')
-const { initDatabase } = require('./models')
 const { autoLog } = require('./middleware/logger')
 
 const authRoutes = require('./routes/auth')
@@ -9,7 +8,6 @@ const reportRoutes = require('./routes/report')
 const userRoutes = require('./routes/user')
 const logRoutes = require('./routes/log')
 const templateRoutes = require('./routes/template')
-const { startCronJobs } = require('./services/cronService')
 
 const app = express()
 

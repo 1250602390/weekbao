@@ -76,7 +76,7 @@ async function handleLogin() {
   try {
     const res = await authStore.login(form.username, form.password)
     if (res.code === 0) {
-      router.push('/')
+      await router.push('/')
     } else {
       errorMsg.value = res.msg || '登录失败'
     }

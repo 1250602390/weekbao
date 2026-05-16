@@ -10,7 +10,7 @@ if (!secret && process.env.NODE_ENV === 'production') {
 module.exports = {
   port: process.env.PORT || 3000,
   jwt: {
-    secret: secret || 'dev-secret-key-' + (process.pid || 'local'),
+    secret: secret || 'weekly-report-dev-secret-key-fixed',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h'
   }
 }
